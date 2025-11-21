@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secret Share | 阅后即焚</title>
+    
+    <!-- 引入 Vue 3 -->
+    <script src="//unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- 引入 Element Plus -->
+    <link rel="stylesheet" href="//unpkg.com/element-plus/dist/index.css" />
+    <link rel="stylesheet" href="//unpkg.com/element-plus/theme-chalk/dark/css-vars.css">
+    <script src="//unpkg.com/element-plus/dist/index.full.js"></script>
+    <script src="//unpkg.com/@element-plus/icons-vue"></script>
+    <!-- 引入 Axios -->
+    <script src="//unpkg.com/axios/dist/axios.min.js"></script>
+
+    <style>
+        /* --- 全局样式 & 动态背景 --- */
+        body {
+            margin: 0;
+            background: radial-gradient(circle at top left, #1b2735 0%, #090a0f 100%);
+            color: #ffffff;
+            font-family: 'PingFang SC', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* 背景光斑动画 */
+        body::before {
+            content: '';
+            position: absolute;
+            width: 400px;
+            height: 400px;
+            background: linear-gradient(45deg, #409eff, #79bbff);
+            filter: blur(120px);
+            border-radius: 50%;
+            top: -100px;
+            left: -100px;
+            opacity: 0.2;
+            z-index: -1;
+            animation: float 10s infinite ease-in-out;
+        }
+        body::after {
+            content: '';
+            position: absolute;
+            width: 300px;
+            height: 300px;
+            background: linear-gradient(45deg, #f56c6c, #fab6b6);
+            filter: blur(100px);
+            border-radius: 50%;
+            bottom: -50px;
+            right: -50px;
+            opacity: 0.15;
+            z-index: -1;
+            animation: float 12s infinite ease-in-out reverse;
+        }
+
+        @keyframes float {
+            0% { transform: translate(0, 0); }
+            50% { transform: translate(30px, 20px); }
+            100% { transform: translate(0, 0); }
+        }
+
+        /* --- 毛玻璃卡片 --- */
+        .glass-card {
+            width: 100%;
+            max-width: 650px;
+            background: rgba(30, 30, 35, 0.6) !important;
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5) !important;
+            border-radius: 16px !important;
+            transition: transform 0.3s ease;
+        }
+
+        /* 标题样式 */
+        .header-area {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .app-title {
+            font-size: 28px;
+            font-weight: 700;
+            background: linear-gradient(to right, #409eff, #a0cfff);
+            -webkit-background-clip: text;
+            color: transparent;
+            margin: 10px 0;
+            letter-spacing: 1px;
+        }
+        .app-subtitle {
+            color: #888;
+            font-size: 13px;
+        }
+
+        /* --- 输入框美化 --- */
+        .custom-textarea .el-textarea__inner {
+            background-color: rgba(0, 0, 0, 0.3) !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            color: #eee !important;
+            font-family: 'Menlo', 'Monaco', 'Courier New', monospace; /* 代码风格字体 */
+            font-size: 14px;
+            border-radius: 8px;
+            padding: 15px;
+            transition: all 0.3s;
+        }
+        .custom-textarea .el-textarea__inner:focus {
+            border-color: #409eff !important;
+            box-shadow: 0 0 15px rgba(64, 158, 255, 0.2) !important;
+        }
+
+        /* 选项区域 */
+        .option-group {
+            margin-bottom: 20px;
+            background: rgba(0,0,0,0.2);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+        .option-label {
+            font-size: 14px;
+            color: #aaa;
+            margin-bottom: 10px;
+            display: block;
+        }
+
+        /* 结果页样式 */
+        .result-box {
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px dashed #67c23a;
+            padding: 20px;
+            border-radius: 8px;
+            color: #67c23a;
+            word-break: break-all;
+            font-family: monospace;
+            margin: 20px 0;
+            position: relative;
+        }
+
+        /* 动画 */
+        .fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
+        .fade-enter-from, .fade-leave-to { opacity: 0; }
+    </style>
+</head>
+<body>
+
+<div id="app" style="width: 100%; padding: 20px; display: flex; justify-content: center;">
+    
+    <el-card class="glass-card">
+        <!-- 头部 -->
+        <div class="header-area">
+            <el-icon size="40" color="#409eff"><Lock /></el-icon>
+            <h1 class="app-title">SECRET SHARE</h1>
+            <div class="app-subtitle">端对端临时加密 · 阅后即焚 · 隐私无痕</div>
+        </div>
+
+        <!-- 场景 1: 加载中 -->
+        <div v-if="loading" style="text-align: center; padding: 50px;">
+            <el-icon class="is-loading" size="40" color="#409eff"><Loading /></el-icon>
+            <p style="color: #888; margin-top: 15px;">正在与安全服务器通信...</p>
+        </div>
+
+        <!-- 场景 2: 创建秘密 (默认首页) -->
+        <div v-else-if="viewMode === 'create'">
+            <el-form label-position="top">
+                <!-- 输入区域 -->
+                <el-form-item>
+                    <el-input 
+                        v-model="form.content" 
+                        type="textarea" 
+                        :rows="8" 
+                        class="custom-textarea"
+                        placeholder="在此输入你的秘密、密码、API Key 或任何敏感信息..."
+                    ></el-input>
+                </el-form-item>
+
+                <el-row :gutter="20">
+                    <!-- 左侧：最大查看次数 -->
+                    <el-col :xs="24" :sm="12">
+                        <div class="option-group">
+                            <span class="option-label"><el-icon><View /></el-icon> 销毁条件 (次数)</span>
+                            
+                            <!-- 单选按钮组 -->
+                            <el-radio-group v-model="presets.views" size="small" style="width: 100%; margin-bottom: 10px;">
+                                <el-radio-button label="1">1次</el-radio-button>
+                                <el-radio-button label="5">5次</el-radio-button>
+                                <el-radio-button label="10">10次</el-radio-button>
+                                <el-radio-button label="custom">自定义</el-radio-button>
+                            </el-radio-group>
+
+                            <!-- 自定义输入框 (仅当选中custom时显示) -->
+                            <transition name="fade">
+                                <el-input-number 
+                                    v-if="presets.views === 'custom'"
+                                    v-model="form.maxViews" 
+                                    :min="1" 
+                                    :max="999"
+                                    style="width: 100%"
+                                    placeholder="输入次数"
+                                ></el-input-number>
+                            </transition>
+                        </div>
+                    </el-col>
+
+                    <!-- 右侧：过期时间 -->
+                    <el-col :xs="24" :sm="12">
+                        <div class="option-group">
+                            <span class="option-label"><el-icon><Timer /></el-icon> 有效期限 (分钟)</span>
+                            
+                            <el-radio-group v-model="presets.expiry" size="small" style="width: 100%; margin-bottom: 10px;">
+                                <el-radio-button label="10">10分</el-radio-button>
+                                <el-radio-button label="60">1小时</el-radio-button>
+                                <el-radio-button label="1440">1天</el-radio-button>
+                                <el-radio-button label="custom">自定义</el-radio-button>
+                            </el-radio-group>
+
+                            <transition name="fade">
+                                <el-input-number 
+                                    v-if="presets.expiry === 'custom'"
+                                    v-model="form.expiryMinutes" 
+                                    :min="1" 
+                                    :max="10080"
+                                    style="width: 100%"
+                                    placeholder="输入分钟数"
+                                >
+                                    <template #suffix>分钟</template>
+                                </el-input-number>
+                            </transition>
+                        </div>
+                    </el-col>
+                </el-row>
+
+                <!-- 提交按钮 -->
+                <div style="margin-top: 10px;">
+                    <el-button 
+                        type="primary" 
+                        size="large" 
+                        style="width: 100%; height: 50px; font-size: 16px; background: linear-gradient(90deg, #409eff, #337ecc); border: none;" 
+                        @click="createSecret" 
+                        :loading="submitting"
+                        round
+                    >
+                        <el-icon style="margin-right: 5px"><Key /></el-icon> 生成加密链接
+                    </el-button>
+                </div>
+            </el-form>
+        </div>
+
+        <!-- 场景 3: 链接已生成 -->
+        <div v-else-if="viewMode === 'result'" style="text-align: center;">
+            <el-result icon="success" title="加密链接已生成" sub-title="只有拥有此链接的人才能查看秘密">
+            </el-result>
+            
+            <div class="result-box" @click="copyLink" style="cursor: pointer;" title="点击复制">
+                {{ generatedUrl }}
+            </div>
+
+            <div style="display: flex; gap: 10px; justify-content: center;">
+                <el-button type="success" @click="copyLink" round size="large">
+                    <el-icon><CopyDocument /></el-icon> 复制链接
+                </el-button>
+                <el-button @click="resetForm" round size="large">再写一个</el-button>
+            </div>
+            
+            <div style="margin-top: 25px; padding: 15px; background: rgba(255,255,255,0.05); border-radius: 8px; font-size: 12px; color: #888; text-align: left;">
+                <p><el-icon><Warning /></el-icon> <strong>安全提示：</strong></p>
+                <ul style="margin: 5px 0; padding-left: 20px;">
+                    <li>该链接将在 <strong>{{ form.maxViews }}</strong> 次访问后失效。</li>
+                    <li>或者在 <strong>{{ form.expiryMinutes }}</strong> 分钟后自动销毁。</li>
+                    <li>服务器不保存任何日志，数据一旦销毁无法恢复。</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- 场景 4: 查看秘密 -->
+        <div v-else-if="viewMode === 'read'">
+            <el-alert
+                title="这是一条阅后即焚的消息"
+                type="warning"
+                effect="dark"
+                :closable="false"
+                show-icon
+                style="margin-bottom: 20px;"
+            >
+                <template #default>
+                    剩余查看次数：<strong>{{ secretData.remainingViews }}</strong>。如果你刷新页面，这条消息可能会消失。
+                </template>
+            </el-alert>
+
+            <div style="position: relative;">
+                <el-input 
+                    :model-value="secretData.content" 
+                    type="textarea" 
+                    readonly 
+                    :autosize="{ minRows: 6, maxRows: 15 }"
+                    class="custom-textarea"
+                ></el-input>
+                <!-- 一个水印效果 -->
+                <div v-if="secretData.isBurned" 
+                     style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-15deg); 
+                            border: 5px solid #f56c6c; color: #f56c6c; font-size: 40px; font-weight: bold; 
+                            padding: 10px 30px; border-radius: 10px; opacity: 0.8; pointer-events: none;">
+                    已销毁
+                </div>
+            </div>
+
+            <div v-if="secretData.isBurned" style="margin-top: 20px; color: #f56c6c; text-align: center;">
+                <el-icon><DeleteFilled /></el-icon> 此链接已失效，数据已从服务器永久擦除。
+            </div>
+
+            <div style="margin-top: 30px; text-align: center;">
+                <el-button type="primary" plain round @click="resetForm">我也要发送秘密</el-button>
+            </div>
+        </div>
+
+        <!-- 场景 5: 错误 -->
+        <div v-else-if="viewMode === 'error'" style="text-align: center; padding: 40px 20px;">
+            <div style="font-size: 80px; margin-bottom: 20px;">👻</div>
+            <h2 style="color: #909399; margin-bottom: 10px;">链接无效</h2>
+            <p style="color: #666; margin-bottom: 30px;">
+                该秘密可能已达到查看上限、已过期，或者从未存在过。
+            </p>
+            <el-button type="primary" round @click="resetForm">创建新秘密</el-button>
+        </div>
+
+    </el-card>
+</div>
+
+<script>
+    const { createApp, reactive, toRefs, onMounted, watch } = Vue;
+    const { ElMessage } = ElementPlus;
+
+    // --- 配置后端地址 ---
+    const API_BASE_URL = 'http://localhost:8080/api';
+
+    const app = createApp({
+        setup() {
+            const state = reactive({
+                viewMode: 'create', // create, result, read, error
+                loading: false,
+                submitting: false,
+                
+                // 预设值的中间状态
+                presets: {
+                    views: '1',     // 默认选中 "1次"
+                    expiry: '10'    // 默认选中 "10分钟"
+                },
+
+                // 实际提交给后端的表单
+                form: {
+                    content: '',
+                    maxViews: 1,
+                    expiryMinutes: 10
+                },
+                
+                generatedUrl: '',
+                secretData: { content: '', remainingViews: 0, isBurned: false }
+            });
+
+            // --- 逻辑：监听预设值的变化 ---
+            // 当用户点击单选按钮时，自动更新表单数据
+            watch(() => state.presets.views, (newVal) => {
+                if (newVal !== 'custom') {
+                    state.form.maxViews = parseInt(newVal);
+                }
+            });
+
+            watch(() => state.presets.expiry, (newVal) => {
+                if (newVal !== 'custom') {
+                    state.form.expiryMinutes = parseInt(newVal);
+                }
+            });
+
+            // --- 初始化 ---
+            onMounted(() => {
+                const urlParams = new URLSearchParams(window.location.search);
+                const id = urlParams.get('id');
+                if (id) {
+                    fetchSecret(id);
+                }
+            });
+
+            // --- API 交互 ---
+            const createSecret = async () => {
+                if (!state.form.content.trim()) {
+                    ElMessage.warning('请先输入秘密内容');
+                    return;
+                }
+                state.submitting = true;
+                try {
+                    const res = await axios.post(`${API_BASE_URL}/secrets`, state.form);
+                    
+                    // 拼接当前页面URL + ID
+                    const currentPath = window.location.href.split('?')[0];
+                    state.generatedUrl = `${currentPath}?id=${res.data.id}`;
+                    state.viewMode = 'result';
+                } catch (error) {
+                    console.error(error);
+                    ElMessage.error('服务连接失败，请检查后端是否启动');
+                } finally {
+                    state.submitting = false;
+                }
+            };
+
+            const fetchSecret = async (id) => {
+                state.viewMode = 'read';
+                state.loading = true;
+                try {
+                    const res = await axios.get(`${API_BASE_URL}/secrets/${id}`);
+                    state.secretData = res.data;
+                } catch (error) {
+                    console.error(error);
+                    state.viewMode = 'error';
+                } finally {
+                    state.loading = false;
+                }
+            };
+
+            const copyLink = () => {
+                navigator.clipboard.writeText(state.generatedUrl).then(() => {
+                    ElMessage.success({
+                        message: '链接已复制，快去分享吧！',
+                        type: 'success',
+                    });
+                });
+            };
+
+            const resetForm = () => {
+                window.history.pushState({}, document.title, window.location.pathname);
+                state.form.content = '';
+                // 重置回默认状态
+                state.presets.views = '1';
+                state.form.maxViews = 1;
+                state.presets.expiry = '10';
+                state.form.expiryMinutes = 10;
+                
+                state.viewMode = 'create';
+            };
+
+            return {
+                ...toRefs(state),
+                createSecret,
+                copyLink,
+                resetForm
+            };
+        }
+    });
+
+    for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
+        app.component(key, component)
+    }
+
+    app.use(ElementPlus);
+    app.mount('#app');
+</script>
+</body>
+</html>
