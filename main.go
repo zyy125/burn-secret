@@ -20,5 +20,7 @@ func main() {
 		api.GET("/secrets/:id", handlers.GetSecret)
 	}
 	
+    println("项目已启动: http://localhost:8080")
+
 	r.Run(":8080")
 }
