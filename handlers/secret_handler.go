@@ -17,6 +17,7 @@ func CreateSecret(c *gin.Context){
 			"code": 400,
 			"message": "request fomat error",
 		})
+		return
 	}
 
 	newID := utils.GetRandomID(models.IDLenth)
@@ -31,7 +32,10 @@ func CreateSecret(c *gin.Context){
 		ViewsCount: 0,
 	}
 
-	store.StoreSecret(&newSecret)
+	if err := store.StoreSecret(&newSecret); err != nil {
+        c.JSON(500, gin.H{"error": "Failed to save secret"})
+        return
+	}
 
 	accessUrl := "http://localhost:8080/view/" + newID
 
@@ -45,12 +49,21 @@ func CreateSecret(c *gin.Context){
 func GetSecret(c *gin.Context) {
 	id := c.Param("id")
 
-	secret, exist := store.GetSecret(id)
-	if exist == false {
+	secret, err := store.GetSecret(id)
+	if secret == nil && err == nil{
 		c.JSON(404, gin.H{
 			"code": 404,
 			"message": "not found",
 		})
+		return
+	}
+
+	if err != nil {
+		c.JSON(500, gin.H{
+			"code": 500,
+			"message": err,
+		})
+		return
 	}
 	
 	isBurned := secret.ViewsCount + 1 > secret.MaxViews 

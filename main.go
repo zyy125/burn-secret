@@ -11,7 +11,7 @@ import (
 func main() {
 	r := gin.Default()
 
-	go store.CleanTask()
+	store.InitRedis()
 	r.Use(middleware.CorsMiddleware())
 
 	api := r.Group("/api") 

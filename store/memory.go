@@ -2,54 +2,65 @@ package store
 
 import (
 	"burn-secret/models"
-	"sync"
+	"context"
 	"time"
-)
+	"encoding/json"
 
+	"github.com/redis/go-redis/v9"
+)
 var (
-	Store = make(map[string]*models.Secret)
-
-	Mutex sync.RWMutex
+	rdb *redis.Client
+	ctx = context.Background()
 )
 
-func StoreSecret(secret *models.Secret) {
-	Mutex.Lock()
-	Store[secret.ID] = secret
-	Mutex.Unlock()
+func InitRedis() {
+	rdb = redis.NewClient(&redis.Options{
+		Addr: "localhost:6379",
+		Password: "",
+		DB:  0,
+	})
 }
 
-func GetSecret(id string) (secret *models.Secret, exist bool) { 
-	Mutex.Lock()
-	if Store[id] == nil {
-		Mutex.Unlock()
-		return nil, false
+func StoreSecret(secret *models.Secret) error {
+	b, err := json.Marshal(*secret)
+	if err != nil {
+		return err
 	}
 
-	secret = Store[id]
-	Mutex.Unlock()
-	secret.ViewsCount++
-	duration := time.Duration(secret.ExpiryMinutes) * time.Minute
-
-	if time.Now().After(secret.CreatedAt.Add(duration)) || secret.ViewsCount > secret.MaxViews{
-		Mutex.Lock()
-		delete(Store, id)
-		Mutex.Unlock()
-		return nil, false
+	err = rdb.Set(ctx, secret.ID, b, time.Duration(secret.ExpiryMinutes) * time.Minute).Err()
+	if err != nil {
+		return err
 	}
 
-	return secret, true
+	return nil
 }
 
-func CleanTask() {
-	for {
-		time.Sleep(time.Minute * 1)
-		Mutex.Lock()
-		for id, secret := range Store{
-			duration := time.Duration(secret.ExpiryMinutes) * time.Minute
-			if time.Now().After(secret.CreatedAt.Add(duration)) || secret.ViewsCount > secret.MaxViews{
-				delete(Store, id)
-			}
-		}	
-		Mutex.Unlock()
+func GetSecret(id string) (secret *models.Secret, err error) { 
+	val, err := rdb.Get(ctx, id).Result()
+	if err == redis.Nil{
+		return nil, nil
+	} else if err != nil {
+		return nil, err
 	}
+
+	secret = &models.Secret{}
+	err = json.Unmarshal([]byte(val), secret)
+	if err != nil {
+		return secret, err
+	}
+
+	if secret.ViewsCount++; secret.ViewsCount >= secret.MaxViews {
+		if err = rdb.Del(ctx, secret.ID).Err(); err != nil {
+			return secret, err
+		}
+		return secret, nil
+	}
+
+	b, err := json.Marshal(secret)
+
+	if err = rdb.Set(ctx, secret.ID, b, redis.KeepTTL).Err(); err != nil {
+		return secret, err
+	}
+
+	return secret, nil
 }
